@@ -1,0 +1,61 @@
+# config.yaml - HK/US Stock Analysis Configuration
+MARKET_TYPE: "US"  # Change to "US" for US stocks
+BASE_OUTPUT_DIR: "./stock_analysis_report"  # Root of the new folder structure
+
+# ==================== Categorized Stock Lists (Unchanged) ====================
+HK_STOCK_MARKET_LIST:
+  - "^HSI"    # 恒生指数
+  - "2800.HK" # 盈富基金
+HK_STOCK_STRONG_TREND_LIST:
+  - "0700.HK" # 腾讯控股
+HK_STOCK_WATCH_LIST:
+  - "9660.HK" # 小米集团-W
+HK_STOCK_HOLDING_LIST:
+  - "3690.HK"
+  - "9988.HK"
+  - "2318.HK"
+  - "1211.HK"
+  - "0388.HK"
+  - "03698.HK"
+  - "1024.HK"
+
+US_STOCK_MARKET_LIST:
+  - "^DJI"    # 道琼斯工业指数
+  - "^IXIC"   # 纳斯达克综合指数
+  - "^GSPC"   # 标普500指数
+US_STOCK_STRONG_TREND_LIST:
+  - "DE"
+US_STOCK_WATCH_LIST:
+  - "TSLA"    # 特斯拉
+  - "NVDA"    # 英伟达
+US_STOCK_HOLDING_LIST:
+  - "MRNA"
+  - "PLTR"
+  - "WING"
+
+# ==================== Remaining Config (Unchanged) ====================
+TENCENT_API_HEADERS:
+  User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+  Referer: "https://finance.qq.com/"
+HK_COLOR_CONFIG:
+  up_color: "#FF3333"
+  down_color: "#00B300"
+  ma_colors: {5: "#FF9900", 10: "#FF33CC", 20: "#0066FF", 60: "#9933FF"}
+PERIOD: "3mo"
+INTERVAL: "1d"
+MA_PERIODS: [5, 10, 20, 60]
+SUPPORT_RESISTANCE_LOOKBACK: 20
+RSI_PERIOD: 14
+RSI_OVERBOUGHT: 70
+RSI_OVERSOLD: 30
+
+
+# ==================== 豆包 AI 分析 (核心配置 - 匹配你能正常运行的旧版本) ====================
+DOUBAO_API_KEY: "sk-cvBc1O6FTWPoMyHSAHx6egpFsY8mTwfFy9ke4DyEI8VCdcux"  # 必须填你旧版本能用的API Key
+API_HOST: "api.newcoin.tech"            # 替换成你旧版本能用的域名
+API_PATH: "/v1/chat/completions"        # 替换成你旧版本能用的路径
+MODEL: "doubao-seed-1-8-251228"                # 必须填你旧版本能用的模型名
+
+# ==================== Telegram 发送 ====================
+TELEGRAM_BOT_TOKEN: "8060510240:AAFPXSjnfovXguuM8kmbcOxsJvPgVP6bDmg"
+TELEGRAM_CHAT_ID: "5927631841"
