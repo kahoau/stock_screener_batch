@@ -10,6 +10,48 @@ from telegram import Bot
 from telegram.constants import ParseMode
 from datetime import datetime
 import numpy as np
+# ✅ 新增：音频生成相关库
+import pyttsx3
+import edge_tts
+import aiofiles
+
+
+# ------------------------------------------------------------------------------
+# ✅ NEW: Audio Generation Functions (Edge TTS - Better Quality than Google)
+# ------------------------------------------------------------------------------
+async def generate_audio(text, lang, output_path):
+    """
+    Generate audio using Edge TTS (better quality than Google TTS)
+    Supported langs:
+    - Cantonese: zh-HK (Hong Kong Cantonese)
+    - Mandarin: zh-CN (Mainland Mandarin)
+    - English: en-US (American English)
+    """
+    # ✅ 修正：使用 Microsoft 官方有效聲源
+    voice_map = {
+        "zh-HK": "zh-HK-WanLungNeural",  # 香港粵語（正確）
+        "zh-CN": "zh-CN-XiaoxiaoNeural",  # 普通話
+        "en-US": "en-US-AriaNeural"  # 英語
+    }
+
+    try:
+        communicate = edge_tts.Communicate(text, voice_map[lang])
+        await communicate.save(output_path)
+        print(f"✅ Audio generated: {output_path}")
+        return output_path
+    except Exception as e:
+        print(f"❌ Audio generation failed for {lang}: {str(e)}")
+        return None
+
+
+def clean_text_for_tts(text):
+    """Clean special characters from text to avoid TTS errors"""
+    # Remove markdown symbols and special chars
+    clean_text = text.replace("#", "").replace("*", "").replace("`", "").replace("---", "")
+    clean_text = clean_text.replace("📊", "").replace("📝", "").replace("：", ":").replace("｜", "|")
+    # Simplify line breaks for better TTS flow
+    clean_text = clean_text.replace("\n\n", ". ").replace("\n", ". ")
+    return clean_text
 
 
 # ------------------------------------------------------------------------------
@@ -86,24 +128,26 @@ def init():
         market_en = "US Stocks"
         market_folder = "US"
 
-    # ✅ Create Option 2 Folder Structure: BASE → MARKET → CATEGORY → DATE → img
+    # ✅ Create Option 2 Folder Structure: BASE → MARKET → CATEGORY → DATE → img + audio
     category_folders = {}
     for cat, cat_info in category_mapping.items():
         # Step 1: Market + Category folder (e.g., ./stock_analysis_report/HK/holdings)
         category_root = os.path.join(base_output_dir, market_folder, cat)
         # Step 2: Date subfolder (e.g., ./stock_analysis_report/HK/holdings/20260216)
         date_folder = os.path.join(category_root, today)
-        # Step 3: Image folder inside date folder (e.g., ./stock_analysis_report/HK/holdings/20260216/img)
+        # Step 3: Image + Audio folders inside date folder
         img_folder = os.path.join(date_folder, "img")
+        audio_folder = os.path.join(date_folder, "audio")  # ✅ New: Audio folder
 
         # Create all folders (exist_ok=True to avoid errors if folders already exist)
-        for folder in [category_root, date_folder, img_folder]:
+        for folder in [category_root, date_folder, img_folder, audio_folder]:
             os.makedirs(folder, exist_ok=True)
 
         category_folders[cat] = {
-            "category_root": category_root,  # e.g., ./stock_analysis_report/HK/holdings
-            "report_folder": date_folder,  # e.g., ./stock_analysis_report/HK/holdings/20260216 (where MD is saved)
-            "img_folder": img_folder,  # e.g., ./stock_analysis_report/HK/holdings/20260216/img
+            "category_root": category_root,
+            "report_folder": date_folder,
+            "img_folder": img_folder,
+            "audio_folder": audio_folder,  # ✅ Add audio folder path
             "cn_name": cat_info["cn_name"],
             "en_name": cat_info["en_name"]
         }
@@ -123,7 +167,7 @@ def init():
         "market_type": market_type,
         "market_cn": market_cn,
         "market_en": market_en,
-        "market_folder": market_folder,  # HK/US (folder name)
+        "market_folder": market_folder,
         "today": today,
         "base_output_dir": base_output_dir,
         "category_mapping": category_mapping,
@@ -448,32 +492,52 @@ def plot_stock_chart(stock, df, support, resistance, config, category):
 
 
 # ------------------------------------------------------------------------------
-# ✅ COMPLETELY REWRITTEN: Generate Single Stock Report (Dual Language + Separate File)
+# ✅ UPDATED: Generate Single Stock Report (With Audio Embedding)
 # ------------------------------------------------------------------------------
-def generate_single_stock_report(stock_report, config, category):
-    """Generate individual report file for each stock (Chinese + English)"""
+async def generate_single_stock_report(stock_report, config, category):
+    """Generate pure Markdown report (no HTML) with web-ready audio links"""
     # Get basic info
     stock = stock_report["stock"]
     today = config["today"]
     market_folder = config["market_folder"]  # HK/US
     category_info = config["category_folders"][category]
-    date_folder = category_info["report_folder"]  # e.g., ./stock_analysis_report/HK/holdings/20260216
+    date_folder = category_info["report_folder"]
+    audio_folder = category_info["audio_folder"]
 
     # Clean stock code for filename (replace . with empty, e.g., 0700.HK → 0700HK)
     clean_stock_code = stock.replace(".", "")
 
-    # Nicely formatted filename: {market}_{category}_{stock_code}_{date}.md
-    # e.g., HK_holdings_0700HK_20260216.md
-    report_filename = f"{market_folder}_{category}_{clean_stock_code}_{today}.md"
-    report_path = os.path.join(date_folder, report_filename)
+    # 1. Generate Audio Files
+    cn_analysis_text = f"{stock} 技術分析報告。{stock_report['ai']['cn']}"
+    en_analysis_text = f"{stock} Technical Analysis Report. {stock_report['ai']['en']}"
+    clean_cn_text = clean_text_for_tts(cn_analysis_text)
+    clean_en_text = clean_text_for_tts(en_analysis_text)
 
-    # Image relative path (for markdown display)
-    img_filename = os.path.basename(stock_report["image"])
-    img_relative_path = f"img/{img_filename}"
+    # Audio filenames (web-friendly: no spaces/special chars)
+    cantonese_audio_filename = f"{clean_stock_code}_cantonese_{today}.mp3"
+    mandarin_audio_filename = f"{clean_stock_code}_mandarin_{today}.mp3"
+    english_audio_filename = f"{clean_stock_code}_english_{today}.mp3"
 
-    # Build markdown content (Chinese first, then English)
+    cantonese_audio_path = os.path.join(audio_folder, cantonese_audio_filename)
+    mandarin_audio_path = os.path.join(audio_folder, mandarin_audio_filename)
+    english_audio_path = os.path.join(audio_folder, english_audio_filename)
+
+    # Generate audio (Edge TTS)
+    await generate_audio(clean_cn_text, "zh-HK", cantonese_audio_path)
+    await generate_audio(clean_cn_text, "zh-CN", mandarin_audio_path)
+    await generate_audio(clean_en_text, "en-US", english_audio_path)
+
+    # 2. Web-optimized relative paths (critical for stock_screener_web)
+    # Path format: /{market}/{category}/{date}/audio/{filename} (absolute for web)
+    # OR relative path (works if MD/HTML is in /{market}/{category}/{date}/):
+    img_relative_path = f"img/{os.path.basename(stock_report['image'])}"
+    cantonese_audio_rel = f"audio/{cantonese_audio_filename}"  # Web-ready relative path
+    mandarin_audio_rel = f"audio/{mandarin_audio_filename}"
+    english_audio_rel = f"audio/{english_audio_filename}"
+
+    # 3. Pure Markdown content (NO HTML)
     md_content = [
-        # Chinese Section
+        # Chinese Section (Pure Markdown)
         f"# {config['market_cn']} - {category_info['cn_name']}",
         f"## {stock} 技術分析報告",
         f"**生成時間**: {today}",
@@ -490,9 +554,13 @@ def generate_single_stock_report(stock_report, config, category):
         "### 📝 AI超短線分析 (1-5日)",
         stock_report['ai']['cn'],
         "",
+        "### 🎧 語音版本",
+        f"- 粵語版: [{cantonese_audio_filename}]({cantonese_audio_rel})",  # Pure MD link
+        f"- 普通話版: [{mandarin_audio_filename}]({mandarin_audio_rel})",
+        "",
         "---",
         "",
-        # English Section
+        # English Section (Pure Markdown)
         f"# {config['market_en']} - {category_info['en_name']}",
         f"## {stock} Technical Analysis Report",
         f"**Generated Time**: {today}",
@@ -507,21 +575,26 @@ def generate_single_stock_report(stock_report, config, category):
         f"- Support Level: {stock_report['support']} | Resistance Level: {stock_report['resistance']}",
         "",
         "### 📝 AI Short-Term Analysis (1-5 Days)",
-        stock_report['ai']['en']
+        stock_report['ai']['en'],
+        "",
+        "### 🎧 Audio Version",
+        f"- English Version: [{english_audio_filename}]({english_audio_rel})",  # Pure MD link
     ]
 
-    # Write to file
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(md_content))
+    # 4. Save pure Markdown file
+    report_filename = f"{market_folder}_{category}_{clean_stock_code}_{today}.md"
+    report_path = os.path.join(date_folder, report_filename)
+    async with aiofiles.open(report_path, "w", encoding="utf-8") as f:
+        await f.write("\n".join(md_content))
 
-    print(f"✅ 生成單股報告: {report_path}")
+    print(f"✅ 生成純Markdown報告(網頁優化): {report_path}")
     return report_path
 
 
 # ------------------------------------------------------------------------------
-# Analyze Category (Updated to call single stock report generator)
+# ✅ UPDATED: Analyze Category (Async for Audio Generation)
 # ------------------------------------------------------------------------------
-def analyze_category(category, config):
+async def analyze_category_async(category, config):
     category_cn = config["category_folders"][category]["cn_name"]
     stocks = config["stock_lists"][category]
     print(f"\n📈 開始分析 {category_cn} (共{len(stocks)}只股票): {', '.join(stocks)}")
@@ -539,10 +612,10 @@ def analyze_category(category, config):
             df = clean_data(df)
             df = add_indicators(df, config)
             sup, res = calculate_swing_support_resistance(df, config)
-            trend = get_trend(df, config)  # Now returns cn/en dict
+            trend = get_trend(df, config)
             latest = df.iloc[-1]
             rsi_val = latest["RSI"]
-            rsi_txt = rsi_status(rsi_val, config)  # Now returns cn/en dict
+            rsi_txt = rsi_status(rsi_val, config)
             img_path = plot_stock_chart(stock, df, sup, res, config, category)
 
             # Get dual-language AI analysis
@@ -564,11 +637,11 @@ def analyze_category(category, config):
                 "ai": ai_analysis
             }
 
-            # Generate single stock report file
-            report_path = generate_single_stock_report(stock_report, config, category)
+            # Generate single stock report (with audio)
+            report_path = await generate_single_stock_report(stock_report, config, category)
             generated_reports.append(report_path)
 
-            print(f"  ✅ {stock} 分析完成，報告已生成")
+            print(f"  ✅ {stock} 分析完成，報告+音頻已生成")
 
         except Exception as e:
             print(f"  ❌ 分析 {stock} 出错: {str(e)}")
@@ -578,17 +651,9 @@ def analyze_category(category, config):
 
 
 # ------------------------------------------------------------------------------
-# Telegram (Commented Out)
+# ✅ UPDATED: Main Program (Async Entry Point)
 # ------------------------------------------------------------------------------
-# async def send_telegram(reports, config):
-#     pass
-# def escape_markdown_v2(t):
-#     pass
-
-# ------------------------------------------------------------------------------
-# Main Program (Unchanged Logic, updated output message)
-# ------------------------------------------------------------------------------
-if __name__ == "__main__":
+async def main():
     config = init()
     market_cn = config["market_cn"]
     today = config["today"]
@@ -599,13 +664,18 @@ if __name__ == "__main__":
 
     all_categories = ["market", "strong_trend", "watch", "holding"]
     for category in all_categories:
-        generated_reports = analyze_category(category, config)
+        generated_reports = await analyze_category_async(category, config)
         if generated_reports:
             category_cn = config["category_folders"][category]["cn_name"]
-            print(f"✅ {category_cn} 共生成 {len(generated_reports)} 個單股報告")
+            print(f"✅ {category_cn} 共生成 {len(generated_reports)} 個單股報告(含音頻)")
         else:
             category_cn = config["category_folders"][category]["cn_name"]
             print(f"⚠️ {category_cn} 無有效分析結果")
 
     print(f"\n✅ 所有{market_cn}類別分析完成！")
-    print(f"📄 報告位置: {base_output_dir}/{config['market_folder']} (每只股票單獨文件)")
+    print(f"📄 報告位置: {base_output_dir}/{config['market_folder']} (每只股票單獨文件+音頻)")
+
+
+if __name__ == "__main__":
+    # Run async main function
+    asyncio.run(main())

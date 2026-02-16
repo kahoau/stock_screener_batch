@@ -1,5 +1,5 @@
 # config.yaml - HK/US Stock Analysis Configuration
-MARKET_TYPE: "HK"  # Change to "US" for US stocks
+MARKET_TYPE: "US"  # Change to "US" for US stocks
 BASE_OUTPUT_DIR: "./stock_analysis_report"  # Root of the new folder structure
 
 # ==================== Categorized Stock Lists (Unchanged) ====================
