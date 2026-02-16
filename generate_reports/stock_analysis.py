@@ -58,10 +58,10 @@ def init():
 
     # Category mapping (folder names match your requirement: holdings/strong_trend/market/watch)
     category_mapping = {
-        "market": {"cn_name": "市场指数", "folder_name": "market"},  # Exact folder name
-        "strong_trend": {"cn_name": "强势趋势股", "folder_name": "strong_trend"},
-        "watch": {"cn_name": "观察列表", "folder_name": "watch"},
-        "holding": {"cn_name": "持仓列表", "folder_name": "holdings"}  # Renamed to "holdings" (match your req)
+        "market": {"cn_name": "市场指数", "en_name": "Market Index"},
+        "strong_trend": {"cn_name": "强势趋势股", "en_name": "Strong Trend Stocks"},
+        "watch": {"cn_name": "观察列表", "en_name": "Watch List"},
+        "holding": {"cn_name": "持仓列表", "en_name": "Holding List"}
     }
 
     # Load stock lists (HK/US)
@@ -73,6 +73,7 @@ def init():
             "holding": config["HK_STOCK_HOLDING_LIST"]
         }
         market_cn = "港股"
+        market_en = "Hong Kong Stocks"
         market_folder = "HK"  # Exact market folder name (uppercase)
     else:
         stock_lists = {
@@ -82,13 +83,14 @@ def init():
             "holding": config["US_STOCK_HOLDING_LIST"]
         }
         market_cn = "美股"
+        market_en = "US Stocks"
         market_folder = "US"
 
     # ✅ Create Option 2 Folder Structure: BASE → MARKET → CATEGORY → DATE → img
     category_folders = {}
     for cat, cat_info in category_mapping.items():
         # Step 1: Market + Category folder (e.g., ./stock_analysis_report/HK/holdings)
-        category_root = os.path.join(base_output_dir, market_folder, cat_info["folder_name"])
+        category_root = os.path.join(base_output_dir, market_folder, cat)
         # Step 2: Date subfolder (e.g., ./stock_analysis_report/HK/holdings/20260216)
         date_folder = os.path.join(category_root, today)
         # Step 3: Image folder inside date folder (e.g., ./stock_analysis_report/HK/holdings/20260216/img)
@@ -103,7 +105,7 @@ def init():
             "report_folder": date_folder,  # e.g., ./stock_analysis_report/HK/holdings/20260216 (where MD is saved)
             "img_folder": img_folder,  # e.g., ./stock_analysis_report/HK/holdings/20260216/img
             "cn_name": cat_info["cn_name"],
-            "folder_name": cat_info["folder_name"]
+            "en_name": cat_info["en_name"]
         }
 
     # Color config (unchanged)
@@ -120,6 +122,7 @@ def init():
     init_config = {
         "market_type": market_type,
         "market_cn": market_cn,
+        "market_en": market_en,
         "market_folder": market_folder,  # HK/US (folder name)
         "today": today,
         "base_output_dir": base_output_dir,
@@ -247,37 +250,40 @@ def get_trend(df, config):
     ma20 = sub["MA20"].iloc[-1]
     ma60 = sub["MA60"].iloc[-1]
     if c > ma20 > ma60:
-        return "上升趋势"
+        return {"cn": "上升趋势", "en": "Uptrend"}
     elif c < ma20 < ma60:
-        return "下降趋势"
+        return {"cn": "下降趋势", "en": "Downtrend"}
     else:
-        return "横盘整理"
+        return {"cn": "横盘整理", "en": "Sideways Trend"}
 
 
 def rsi_status(v, config):
     if v >= config["rsi_overbought"]:
-        return "超买"
+        return {"cn": "超买", "en": "Overbought"}
     elif v <= config["rsi_oversold"]:
-        return "超卖"
+        return {"cn": "超卖", "en": "Oversold"}
     else:
-        return "中性"
+        return {"cn": "中性", "en": "Neutral"}
 
 
 # ------------------------------------------------------------------------------
-# ✅ FIXED: get_ai_analysis Function (Previously Missing)
+# ✅ UPDATED: get_ai_analysis (Dual Language: Chinese + English)
 # ------------------------------------------------------------------------------
 def get_ai_analysis(stock, trend, close, ma20, ma60, rsi, rsi_text, support, resistance, config):
     """
-    Call AI API to generate stock analysis (Cantonese, short-term 1-5 days)
+    Call AI API to generate stock analysis in BOTH Cantonese and English (short-term 1-5 days)
     """
-    market = config["market_cn"]
-    prompt = f"""
-你是專業{market}波段交易員，只用廣東話分析，專注1-5日超短線。
+    market_cn = config["market_cn"]
+    market_en = config["market_en"]
+
+    # Chinese Prompt
+    prompt_cn = f"""
+你是專業{market_cn}波段交易員，只用廣東話分析，專注1-5日超短線，語言簡潔。
 股票：{stock}
 現價：{close:.2f}
-趨勢：{trend}
+趨勢：{trend['cn']}
 MA20：{ma20:.2f} MA60：{ma60:.2f}
-RSI：{rsi:.1f} ({rsi_text})
+RSI：{rsi:.1f} ({rsi_text['cn']})
 支撐：{support:.2f} 阻力：{resistance:.2f}
 
 格式：
@@ -286,20 +292,58 @@ RSI：{rsi:.1f} ({rsi_text})
 3. 情景分析
 4. 交易建議
 """
+
+    # English Prompt
+    prompt_en = f"""
+You are a professional {market_en} swing trader, analyze in English only, focus on 1-5 days short-term, concise language.
+Stock: {stock}
+Current Price: {close:.2f}
+Trend: {trend['en']}
+MA20: {ma20:.2f} | MA60: {ma60:.2f}
+RSI: {rsi:.1f} ({rsi_text['en']})
+Support: {support:.2f} | Resistance: {resistance:.2f}
+
+Format:
+1. Trend Summary
+2. Win Rate
+3. Scenario Analysis
+4. Trading Advice
+"""
+
+    # Get Chinese Analysis
     headers = {"Authorization": f"Bearer {config['doubao_api_key']}", "Content-Type": "application/json"}
-    payload = json.dumps({
-        "model": config["model"], "temperature": 0.1,
-        "messages": [{"role": "user", "content": prompt}]
-    })
+    ai_cn = "AI分析失敗（請檢查API配置）"
+    ai_en = "AI analysis failed (please check API configuration)"
+
     try:
+        # Chinese Analysis
+        payload_cn = json.dumps({
+            "model": config["model"], "temperature": 0.1,
+            "messages": [{"role": "user", "content": prompt_cn}]
+        })
         conn = http.client.HTTPSConnection(config["api_host"])
-        conn.request("POST", config["api_path"], payload, headers)
-        resp = json.loads(conn.getresponse().read().decode())
+        conn.request("POST", config["api_path"], payload_cn, headers)
+        resp_cn = json.loads(conn.getresponse().read().decode())
+        ai_cn = resp_cn["choices"][0]["message"]["content"]
         conn.close()
-        return resp["choices"][0]["message"]["content"]
+
+        # English Analysis
+        payload_en = json.dumps({
+            "model": config["model"], "temperature": 0.1,
+            "messages": [{"role": "user", "content": prompt_en}]
+        })
+        conn = http.client.HTTPSConnection(config["api_host"])
+        conn.request("POST", config["api_path"], payload_en, headers)
+        resp_en = json.loads(conn.getresponse().read().decode())
+        ai_en = resp_en["choices"][0]["message"]["content"]
+        conn.close()
+
     except Exception as e:
         print(f"❌ AI分析失敗 for {stock}: {str(e)}")
-        return f"AI分析失敗（請檢查API配置）: {str(e)}"
+        ai_cn = f"AI分析失敗：{str(e)}"
+        ai_en = f"AI analysis failed: {str(e)}"
+
+    return {"cn": ai_cn, "en": ai_en}
 
 
 # ------------------------------------------------------------------------------
@@ -393,7 +437,7 @@ def plot_stock_chart(stock, df, support, resistance, config, category):
     ax3.grid(alpha=0.3)
     ax3.set_facecolor("#F5F5F5")
 
-    # ✅ Save to Option 2 Structure: DATE/img folder (e.g., ./stock_analysis_report/HK/holdings/20260216/img/0005.HK_chart_20260216.png)
+    # ✅ Save to Option 2 Structure: DATE/img folder
     img_folder = config["category_folders"][category]["img_folder"]
     chart_filename = f"{stock}_chart_{config['today']}.png"
     path = os.path.join(img_folder, chart_filename)
@@ -404,65 +448,84 @@ def plot_stock_chart(stock, df, support, resistance, config, category):
 
 
 # ------------------------------------------------------------------------------
-# Generate Report (Save to Option 2 Structure: DATE folder)
+# ✅ COMPLETELY REWRITTEN: Generate Single Stock Report (Dual Language + Separate File)
 # ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# ✅ 圖片放最前，內容放後面 (Image first, then content)
-# ------------------------------------------------------------------------------
-def generate_category_md(reports, config, category):
-    """Generate report saved to DATE subfolder (Option 2 structure)"""
-    category_info = config["category_folders"][category]
-    category_cn = category_info["cn_name"]
-    date_folder = category_info["report_folder"]
-    market_cn = config["market_cn"]
+def generate_single_stock_report(stock_report, config, category):
+    """Generate individual report file for each stock (Chinese + English)"""
+    # Get basic info
+    stock = stock_report["stock"]
     today = config["today"]
+    market_folder = config["market_folder"]  # HK/US
+    category_info = config["category_folders"][category]
+    date_folder = category_info["report_folder"]  # e.g., ./stock_analysis_report/HK/holdings/20260216
 
-    md = [
-        f"# {market_cn} - {category_cn} 分析报告",
-        f"**生成时间**: {today}",
-        f"**分析股票数量**: {len(reports)}",
-        "\n---\n"
-    ]
+    # Clean stock code for filename (replace . with empty, e.g., 0700.HK → 0700HK)
+    clean_stock_code = stock.replace(".", "")
 
-    for r in reports:
-        if not r:
-            continue
-        img_filename = os.path.basename(r["image"])
-        img_relative_path = f"img/{img_filename}"
-
-        # 👇 重點：先放圖，再放內容
-        md.extend([
-            f"## {r['stock']}",
-            f"![{r['stock']} 日线图]({img_relative_path})",  # 圖放最頂
-            "",
-            f"- 最新價格: {r['close']:.2f}",
-            f"- 技術趨勢: {r['trend']}",
-            f"- MA20: {r['ma20']:.2f} | MA60: {r['ma60']:.2f}",
-            f"- RSI({config['rsi_period']}): {r['rsi']:.1f} ({r['rsi_text']})",
-            f"- 支撑位: {r['support']} | 阻力位: {r['resistance']}",
-            "\n### 📝 AI超短線分析",
-            r['ai'],
-            "\n---\n"
-        ])
-
-    report_filename = f"{config['market_folder'].lower()}_{category_info['folder_name']}_report_{today}.md"
+    # Nicely formatted filename: {market}_{category}_{stock_code}_{date}.md
+    # e.g., HK_holdings_0700HK_20260216.md
+    report_filename = f"{market_folder}_{category}_{clean_stock_code}_{today}.md"
     report_path = os.path.join(date_folder, report_filename)
 
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(md))
+    # Image relative path (for markdown display)
+    img_filename = os.path.basename(stock_report["image"])
+    img_relative_path = f"img/{img_filename}"
 
-    print(f"✅ 生成{category_cn}报告: {report_path}")
+    # Build markdown content (Chinese first, then English)
+    md_content = [
+        # Chinese Section
+        f"# {config['market_cn']} - {category_info['cn_name']}",
+        f"## {stock} 技術分析報告",
+        f"**生成時間**: {today}",
+        "",
+        f"![{stock} 日线图]({img_relative_path})",
+        "",
+        "### 📊 核心技術指標",
+        f"- 最新價格: {stock_report['close']:.2f}",
+        f"- 技術趨勢: {stock_report['trend']['cn']}",
+        f"- MA20: {stock_report['ma20']:.2f} | MA60: {stock_report['ma60']:.2f}",
+        f"- RSI({config['rsi_period']}): {stock_report['rsi']:.1f} ({stock_report['rsi_text']['cn']})",
+        f"- 支撑位: {stock_report['support']} | 阻力位: {stock_report['resistance']}",
+        "",
+        "### 📝 AI超短線分析 (1-5日)",
+        stock_report['ai']['cn'],
+        "",
+        "---",
+        "",
+        # English Section
+        f"# {config['market_en']} - {category_info['en_name']}",
+        f"## {stock} Technical Analysis Report",
+        f"**Generated Time**: {today}",
+        "",
+        f"![{stock} Daily Chart]({img_relative_path})",
+        "",
+        "### 📊 Core Technical Indicators",
+        f"- Current Price: {stock_report['close']:.2f}",
+        f"- Technical Trend: {stock_report['trend']['en']}",
+        f"- MA20: {stock_report['ma20']:.2f} | MA60: {stock_report['ma60']:.2f}",
+        f"- RSI({config['rsi_period']}): {stock_report['rsi']:.1f} ({stock_report['rsi_text']['en']})",
+        f"- Support Level: {stock_report['support']} | Resistance Level: {stock_report['resistance']}",
+        "",
+        "### 📝 AI Short-Term Analysis (1-5 Days)",
+        stock_report['ai']['en']
+    ]
+
+    # Write to file
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(md_content))
+
+    print(f"✅ 生成單股報告: {report_path}")
     return report_path
 
 
 # ------------------------------------------------------------------------------
-# Analyze Category (Unchanged Logic)
+# Analyze Category (Updated to call single stock report generator)
 # ------------------------------------------------------------------------------
 def analyze_category(category, config):
     category_cn = config["category_folders"][category]["cn_name"]
     stocks = config["stock_lists"][category]
     print(f"\n📈 開始分析 {category_cn} (共{len(stocks)}只股票): {', '.join(stocks)}")
-    reports = []
+    generated_reports = []
 
     for stock in stocks:
         print(f"  📊 分析 {stock}...")
@@ -476,16 +539,18 @@ def analyze_category(category, config):
             df = clean_data(df)
             df = add_indicators(df, config)
             sup, res = calculate_swing_support_resistance(df, config)
-            trend = get_trend(df, config)
+            trend = get_trend(df, config)  # Now returns cn/en dict
             latest = df.iloc[-1]
             rsi_val = latest["RSI"]
-            rsi_txt = rsi_status(rsi_val, config)
+            rsi_txt = rsi_status(rsi_val, config)  # Now returns cn/en dict
             img_path = plot_stock_chart(stock, df, sup, res, config, category)
-            # ✅ Call get_ai_analysis (now defined)
-            ai = get_ai_analysis(stock, trend, latest.Close, latest.MA20, latest.MA60,
-                                 rsi_val, rsi_txt, sup, res, config)
 
-            reports.append({
+            # Get dual-language AI analysis
+            ai_analysis = get_ai_analysis(stock, trend, latest.Close, latest.MA20, latest.MA60,
+                                          rsi_val, rsi_txt, sup, res, config)
+
+            # Build stock report dict
+            stock_report = {
                 "stock": stock,
                 "close": latest.Close,
                 "ma20": latest.MA20,
@@ -496,15 +561,20 @@ def analyze_category(category, config):
                 "support": sup,
                 "resistance": res,
                 "image": img_path,
-                "ai": ai
-            })
-            print(f"  ✅ {stock} 分析完成")
+                "ai": ai_analysis
+            }
+
+            # Generate single stock report file
+            report_path = generate_single_stock_report(stock_report, config, category)
+            generated_reports.append(report_path)
+
+            print(f"  ✅ {stock} 分析完成，報告已生成")
 
         except Exception as e:
             print(f"  ❌ 分析 {stock} 出错: {str(e)}")
             continue
 
-    return reports
+    return generated_reports
 
 
 # ------------------------------------------------------------------------------
@@ -516,7 +586,7 @@ def analyze_category(category, config):
 #     pass
 
 # ------------------------------------------------------------------------------
-# Main Program (Unchanged Logic)
+# Main Program (Unchanged Logic, updated output message)
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
     config = init()
@@ -529,12 +599,13 @@ if __name__ == "__main__":
 
     all_categories = ["market", "strong_trend", "watch", "holding"]
     for category in all_categories:
-        category_reports = analyze_category(category, config)
-        if category_reports:
-            generate_category_md(category_reports, config, category)
+        generated_reports = analyze_category(category, config)
+        if generated_reports:
+            category_cn = config["category_folders"][category]["cn_name"]
+            print(f"✅ {category_cn} 共生成 {len(generated_reports)} 個單股報告")
         else:
             category_cn = config["category_folders"][category]["cn_name"]
             print(f"⚠️ {category_cn} 無有效分析結果")
 
     print(f"\n✅ 所有{market_cn}類別分析完成！")
-    print(f"📄 報告位置: {base_output_dir}/{config['market_folder']}")
+    print(f"📄 報告位置: {base_output_dir}/{config['market_folder']} (每只股票單獨文件)")

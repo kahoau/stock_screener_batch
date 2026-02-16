@@ -1,5 +1,5 @@
 # config.yaml - HK/US Stock Analysis Configuration
-MARKET_TYPE: "US"  # Change to "US" for US stocks
+MARKET_TYPE: "HK"  # Change to "US" for US stocks
 BASE_OUTPUT_DIR: "./stock_analysis_report"  # Root of the new folder structure
 
 # ==================== Categorized Stock Lists (Unchanged) ====================
@@ -12,12 +12,6 @@ HK_STOCK_WATCH_LIST:
   - "9660.HK" # 小米集团-W
 HK_STOCK_HOLDING_LIST:
   - "3690.HK"
-  - "9988.HK"
-  - "2318.HK"
-  - "1211.HK"
-  - "0388.HK"
-  - "03698.HK"
-  - "1024.HK"
 
 US_STOCK_MARKET_LIST:
   - "^DJI"    # 道琼斯工业指数
@@ -28,6 +22,9 @@ US_STOCK_STRONG_TREND_LIST:
 US_STOCK_WATCH_LIST:
   - "TSLA"    # 特斯拉
   - "NVDA"    # 英伟达
+  - "COIN"
+  - "MU"
+  - "SNDK"
 US_STOCK_HOLDING_LIST:
   - "MRNA"
   - "PLTR"
